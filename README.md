@@ -96,7 +96,7 @@ curl -X POST http://localhost:5000/question -H "Content-Type: application/json" 
 You can run in **non-headless mode** (to see the browser actions) by editing in `index.js`:
 
 ```js
-options.addArguments("--headless=new"); // Remove or comment this line
+   '--headless=new', // Remove or comment this line
 ```
 
 ---
