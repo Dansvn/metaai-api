@@ -5,8 +5,8 @@
   "author": "@dansvn",
   "dependencies": {
     "express": "^4.18.2",
-    "puppeteer": "^24.9.0",
     "axios": "^1.4.0",
     "selenium-webdriver": "^4.12.0"
   }
 }
+
