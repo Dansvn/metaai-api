@@ -8,7 +8,7 @@ const path = require('path');
 const app = express();
 app.use(express.json());
 
-const PORT = 8000;
+const PORT = 8080;
 let driver;
 
 async function wait(startIdx) {
@@ -131,3 +131,4 @@ app.post('/question', async (req, res) => {
     console.log(`API running on port ${PORT}`);
   });
 })();
+
