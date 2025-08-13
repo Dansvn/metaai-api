@@ -5,54 +5,49 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+const PORT = 5000;
+
 const app = express();
 app.use(express.json());
 
-const PORT = 8080;
 let driver;
 
-async function wait(startIdx) {
-  let lastText = '';
-  let sameCount = 0;
+async function waitAnswer(fromIndex) {
+  let lastMessage = '';
+  let stableCount = 0;
 
   for (let i = 0; i < 60; i++) {
-    const msgs = await driver.findElements(By.css('.xe0n8xf.x12d4x0i.x1d5s5ig'));
-    const newMsgs = msgs.slice(startIdx);
-    const curText = (await Promise.all(newMsgs.map(m => m.getText()))).join('\n').trim();
+    let messages = await driver.findElements(By.css('.xe0n8xf.x12d4x0i.x1d5s5ig'));
+    let newMessages = messages.slice(fromIndex);
+    let text = (await Promise.all(newMessages.map(m => m.getText()))).join('\n').trim();
 
-    console.log(`Iter ${i}: currentText =`, curText);
-
-    if (curText && curText === lastText) {
-      sameCount++;
-      if (sameCount >= 2) return curText;
+    if (text && text === lastMessage) {
+      stableCount++;
+      if (stableCount >= 2) return text;
     } else {
-      lastText = curText;
-      sameCount = 0;
+      lastMessage = text;
+      stableCount = 0;
     }
     await driver.sleep(1000);
   }
-  return lastText || "[!] No final response detected.";
+  return lastMessage || "No answer detected.";
 }
 
-async function start() {
-  const tmpDir = path.join(os.tmpdir(), 'chrome-profile-' + Date.now());
-
-  if (fs.existsSync(tmpDir)) {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+async function startBrowser() {
+  const profileDir = path.join(os.tmpdir(), 'chrome-profile-' + Date.now());
+  if (fs.existsSync(profileDir)) {
+    fs.rmSync(profileDir, { recursive: true, force: true });
   }
 
   const options = new chrome.Options();
   options.addArguments(
-    "--headless=new",
-    "--no-sandbox",
-    "--disable-dev-shm-usage",
-    "--disable-gpu",
-    "--disable-blink-features=AutomationControlled",
-    "--enable-unsafe-swiftshader",
-    "--log-level=3"
+    '--headless=new',
+    '--no-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--disable-blink-features=AutomationControlled'
   );
 
-  // Não usa setChromeService pra evitar erro
   driver = await new Builder()
     .forBrowser('chrome')
     .setChromeOptions(options)
@@ -61,21 +56,21 @@ async function start() {
   await driver.get('https://www.meta.ai/');
   await driver.sleep(3000);
 
-  const continueBtn = await driver.wait(
+  const btnContinue = await driver.wait(
     until.elementLocated(By.xpath("//span[contains(text(),'Continue without logging in')]")),
     10000
   );
-  await driver.executeScript("arguments[0].scrollIntoView(true);", continueBtn);
+  await driver.executeScript("arguments[0].scrollIntoView(true);", btnContinue);
   await driver.sleep(500);
-  await continueBtn.click();
+  await btnContinue.click();
 
-  const yearDropdown = await driver.wait(
+  const dropdownYear = await driver.wait(
     until.elementLocated(By.xpath("//span[text()='Year']")),
     10000
   );
-  await driver.executeScript("arguments[0].scrollIntoView(true);", yearDropdown);
+  await driver.executeScript("arguments[0].scrollIntoView(true);", dropdownYear);
   await driver.sleep(500);
-  await yearDropdown.click();
+  await dropdownYear.click();
 
   const year2000 = await driver.wait(
     until.elementLocated(By.xpath("//span[text()='2000']")),
@@ -85,50 +80,38 @@ async function start() {
   await driver.sleep(500);
   await year2000.click();
 
-  const continueFinalBtn = await driver.wait(
+  const btnFinalContinue = await driver.wait(
     until.elementLocated(By.xpath("//span[text()='Continue']")),
     10000
   );
-  await driver.executeScript("arguments[0].scrollIntoView(true);", continueFinalBtn);
+  await driver.executeScript("arguments[0].scrollIntoView(true);", btnFinalContinue);
   await driver.sleep(500);
-  await continueFinalBtn.click();
+  await btnFinalContinue.click();
 
-  console.log("Initial flow completed. Browser ready.");
+  console.log('Browser ready for questions.');
 }
 
 app.post('/question', async (req, res) => {
   try {
     const { question } = req.body;
+    if (!question) return res.status(400).json({ error: "Question is required." });
 
-    if (!question) {
-      console.log("Request without 'question' field received.");
-      return res.status(400).json({ error: "'question' field is required" });
-    }
+    const oldMessages = await driver.findElements(By.css('.xe0n8xf.x12d4x0i.x1d5s5ig'));
+    const fromIndex = oldMessages.length;
 
-    console.log("Question received:", question);
+    const input = await driver.findElement(By.css('[contenteditable="true"]'));
+    await input.click();
+    await input.sendKeys(question, Key.ENTER);
 
-    const msgsBefore = await driver.findElements(By.css('.xe0n8xf.x12d4x0i.x1d5s5ig'));
-    console.log("Messages before sending:", msgsBefore.length);
-    const startIdx = msgsBefore.length;
-
-    const editor = await driver.findElement(By.css('[contenteditable="true"]'));
-    await editor.click();
-    await editor.sendKeys(question, Key.ENTER);
-
-    const finalAnswer = await wait(startIdx);
-    console.log("Final response:", finalAnswer);
-
-    res.json({ answer: finalAnswer });
+    const answer = await waitAnswer(fromIndex);
+    res.json({ answer });
   } catch (err) {
-    console.error("Error sending question:", err);
+    console.error('Error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
 (async () => {
-  await start();
-  app.listen(PORT, () => {
-    console.log(`API running on port ${PORT}`);
-  });
+  await startBrowser();
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 })();
-
